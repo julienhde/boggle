@@ -3,13 +3,16 @@
 // marche hors-ligne) et on le rafraîchit en arrière-plan — une mise à jour du
 // site est donc visible au rechargement suivant. Incrémenter CACHE_NAME force
 // un rafraîchissement complet immédiat.
-const CACHE_NAME = 'boggle-v1';
+const CACHE_NAME = 'boggle-v2';
 
 const ASSETS = [
   '.',
   'index.html',
+  'admin.html',
   'css/style.css',
+  'js/core.js',
   'js/app.js',
+  'js/admin.js',
   'data/words_fr.txt.gz',
   'manifest.webmanifest',
   'icons/icon.svg',

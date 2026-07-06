@@ -213,6 +213,43 @@ h1 { font-size: 19px; margin: 3px 0; letter-spacing: 2px; }
 }
 #endBanner strong { color: #f59e0b; font-size: 22px; }
 
+/* --- Page admin --- */
+.admin-badge {
+  background: #b45309;
+  color: #eee;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  vertical-align: middle;
+  letter-spacing: 1px;
+}
+#results {
+  width: min(92vw, 400px);
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: #16213e;
+  border: 1px solid #444d7c;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.7;
+}
+#results .big { font-size: 20px; font-weight: 700; color: #f59e0b; }
+#results + .start-row { margin-top: 8px; }
+#allWords {
+  width: min(92vw, 400px);
+  margin-top: 4px;
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.6;
+  text-align: left;
+}
+#allWords .word-group-title {
+  color: #7dd3fc;
+  font-weight: 600;
+  margin: 8px 0 2px;
+}
+
 #endBanner details.solutions { margin-top: 8px; text-align: left; }
 #endBanner summary {
   cursor: pointer;
