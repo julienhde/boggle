@@ -85,7 +85,9 @@
   let locked = false;     // true pendant le flash vert/rouge post-validation
 
   let dictionary = null;  // Set<string> une fois chargé
+  let sortedWords = [];   // même contenu, trié (déjà l'ordre du fichier source) : recherche par préfixe
   let dictState = 'loading'; // 'loading' | 'ready' | 'error'
+  let solvedWords = null; // cache des solutions de la grille courante (recalculé à chaque nouvelle grille)
 
   // ---------------------------------------------------------------------------
   // Dictionnaire
@@ -108,6 +110,7 @@
       }
       const list = text.split('\n').filter(Boolean);
       dictionary = new Set(list);
+      sortedWords = list; // déjà trié alphabétiquement dans le fichier source
       dictState = 'ready';
       dictStatusEl.textContent = `Dictionnaire prêt — ${list.length.toLocaleString('fr-FR')} mots ✓`;
       dictStatusEl.classList.add('ready');
@@ -129,6 +132,7 @@
       const face = die[Math.floor(rng() * 6)];
       return face === 'Q' ? 'Qu' : face;
     });
+    solvedWords = null; // la grille change : les solutions mises en cache ne valent plus
     renderGrid();
   }
 
@@ -150,6 +154,40 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Solveur : tous les mots trouvables sur la grille courante (fin de partie)
+  // ---------------------------------------------------------------------------
+
+  // sortedWords est trié : une recherche dichotomique suffit à savoir si un
+  // préfixe existe, sans construire de trie.
+  function hasPrefix(prefix) {
+    let lo = 0, hi = sortedWords.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (sortedWords[mid] < prefix) lo = mid + 1; else hi = mid;
+    }
+    return lo < sortedWords.length && sortedWords[lo].startsWith(prefix);
+  }
+
+  function solveGrid() {
+    const found = new Set();
+    const visited = new Array(letters.length).fill(false);
+
+    function dfs(idx, word) {
+      word += letters[idx];
+      if (!hasPrefix(word)) return;
+      if (word.length >= 3 && dictionary.has(word)) found.add(word);
+      visited[idx] = true;
+      for (let n = 0; n < letters.length; n++) {
+        if (!visited[n] && areAdjacent(idx, n)) dfs(n, word);
+      }
+      visited[idx] = false;
+    }
+
+    for (let i = 0; i < letters.length; i++) dfs(i, '');
+    return [...found].sort((a, b) => b.length - a.length || a.localeCompare(b, 'fr'));
+  }
+
+  // ---------------------------------------------------------------------------
   // Score
   // ---------------------------------------------------------------------------
 
@@ -168,18 +206,22 @@
     return word.length; // simple et bonus partagent la même base : 1 pt/lettre
   }
 
-  // Score total selon le mode actif, recalculé à partir de la liste de mots
-  function computeTotalScore() {
-    const mode = scoreModeSelect.value;
-    if (words.length === 0) return 0;
+  // Score d'une liste de mots pour un mode donné (utilisé pour le score de la
+  // partie en cours comme pour le score max des solutions en fin de partie)
+  function scoreForWords(list, mode) {
+    if (list.length === 0) return 0;
     if (mode === 'tournoi') {
-      return words.reduce((sum, w) => sum + tournoiPoints(w.length), 0);
+      return list.reduce((sum, w) => sum + tournoiPoints(w.length), 0);
     }
-    const base = words.reduce((sum, w) => sum + w.length, 0);
+    const base = list.reduce((sum, w) => sum + w.length, 0);
     if (mode === 'simple') return base;
     // mode bonus : base + 1 pt par mot trouvé + bonus égal à la longueur du mot le plus long
-    const longest = words.reduce((max, w) => Math.max(max, w.length), 0);
-    return base + words.length + longest;
+    const longest = list.reduce((max, w) => Math.max(max, w.length), 0);
+    return base + list.length + longest;
+  }
+
+  function computeTotalScore() {
+    return scoreForWords(words, scoreModeSelect.value);
   }
 
   function recalcScore() {
@@ -208,6 +250,24 @@
     }
     path.push(idx);
     updateSelection();
+  }
+
+  // Glisser le doigt sur la grille : étend le chemin case par case, ou revient
+  // en arrière si on repasse sur une case déjà tracée. Contrairement à
+  // tapTile, ignore silencieusement les cases non adjacentes (le doigt
+  // survole forcément des cases invalides pendant un geste rapide).
+  function extendDragTo(idx) {
+    const pos = path.indexOf(idx);
+    if (pos !== -1) {
+      if (pos === path.length - 1) return false;
+      path.length = pos + 1;
+      updateSelection();
+      return true;
+    }
+    if (path.length > 0 && !areAdjacent(path[path.length - 1], idx)) return false;
+    path.push(idx);
+    updateSelection();
+    return true;
   }
 
   function updateSelection() {
@@ -401,6 +461,7 @@
 
   function showEndBanner() {
     const mode = scoreModeSelect.value;
+    const wasOpen = endBanner.querySelector('details.solutions')?.open ?? false;
     endBanner.style.display = 'block';
     endBanner.textContent = '';
 
@@ -430,6 +491,26 @@
         ? 'Mots déjà vérifiés automatiquement'
         : 'Comparez vos listes, supprimez les mots refusés avec ×')
     );
+
+    if (dictState === 'ready') {
+      if (solvedWords === null) solvedWords = solveGrid();
+      const maxScore = scoreForWords(solvedWords, mode);
+      endBanner.append(
+        document.createElement('br'),
+        smallNote(`Solutions possibles : ${solvedWords.length} mot${solvedWords.length > 1 ? 's' : ''} (score max : ${maxScore} pts)`)
+      );
+
+      const details = document.createElement('details');
+      details.className = 'solutions';
+      details.open = wasOpen;
+      const summary = document.createElement('summary');
+      summary.textContent = 'Voir les solutions';
+      const list = document.createElement('div');
+      list.className = 'solutions-list';
+      list.textContent = solvedWords.join(', ');
+      details.append(summary, list);
+      endBanner.appendChild(details);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -457,9 +538,56 @@
     flashFeedback(`Grille n°${seed}`, true);
   });
 
-  gridEl.addEventListener('click', (e) => {
+  // Sélection par pointeur (souris, tactile, stylet) : un tap simple se
+  // comporte comme avant (tapTile, validation manuelle). Un glissé qui
+  // modifie le chemin sur 2 cases ou plus valide automatiquement le mot au
+  // relâchement, comme dans les applis Boggle classiques.
+  let dragPointerId = null;
+  let dragLastIdx = null;
+  let dragExtended = false;
+
+  function tileIndexAtPoint(x, y) {
+    const el = document.elementFromPoint(x, y);
+    const tile = el && el.closest && el.closest('.tile');
+    if (!tile || !gridEl.contains(tile)) return null;
+    return parseInt(tile.dataset.idx, 10);
+  }
+
+  gridEl.addEventListener('pointerdown', (e) => {
+    if (!playing || locked) return;
     const tile = e.target.closest('.tile');
-    if (tile) tapTile(parseInt(tile.dataset.idx, 10));
+    if (!tile) return;
+    dragPointerId = e.pointerId;
+    dragLastIdx = parseInt(tile.dataset.idx, 10);
+    dragExtended = false;
+    gridEl.setPointerCapture(e.pointerId);
+    tapTile(dragLastIdx);
+  });
+
+  gridEl.addEventListener('pointermove', (e) => {
+    if (dragPointerId !== e.pointerId || !playing || locked) return;
+    const idx = tileIndexAtPoint(e.clientX, e.clientY);
+    if (idx === null || idx === dragLastIdx) return;
+    dragLastIdx = idx;
+    if (extendDragTo(idx)) dragExtended = true;
+  });
+
+  gridEl.addEventListener('pointerup', (e) => {
+    if (dragPointerId !== e.pointerId) return;
+    gridEl.releasePointerCapture(e.pointerId);
+    dragPointerId = null;
+    dragLastIdx = null;
+    const shouldValidate = dragExtended;
+    dragExtended = false;
+    if (shouldValidate) validateWord();
+  });
+
+  gridEl.addEventListener('pointercancel', (e) => {
+    if (dragPointerId !== e.pointerId) return;
+    gridEl.releasePointerCapture(e.pointerId);
+    dragPointerId = null;
+    dragLastIdx = null;
+    dragExtended = false;
   });
 
   scoreModeSelect.addEventListener('change', () => {
