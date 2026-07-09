@@ -24,7 +24,6 @@ const scoreModeSelect = document.getElementById('scoreMode');
 const startBtn = document.getElementById('startBtn');
 const endBanner = document.getElementById('endBanner');
 const dictStatusEl = document.getElementById('dictStatus');
-const previewHintEl = document.getElementById('previewHint');
 
 // ---------------------------------------------------------------------------
 // État de la partie
@@ -287,7 +286,6 @@ function startGame() {
   timerEl.classList.remove('low');
   playing = true;
   gridEl.classList.remove('disabled', 'preview');
-  previewHintEl.style.display = 'none';
   startBtn.textContent = 'Recommencer';
   if (timerId) clearInterval(timerId);
   timerId = setInterval(tick, 1000);
@@ -320,7 +318,6 @@ function stopCurrentGame() {
   timerEl.textContent = formatTime(timeLeft);
   timerEl.classList.remove('low');
   gridEl.classList.add('disabled', 'preview');
-  previewHintEl.style.display = 'block';
   endBanner.style.display = 'none';
   startBtn.textContent = 'Démarrer';
 }

@@ -144,14 +144,6 @@ h1 { font-size: 19px; margin: 3px 0; letter-spacing: 2px; }
 #grid.preview .tile { transition: filter 0.25s ease; }
 #grid.preview .tile:nth-child(n+4) { filter: blur(8px); }
 
-.preview-hint {
-  width: min(92vw, 400px);
-  margin: 4px 0 0;
-  font-size: 11px;
-  color: #aaa;
-  text-align: center;
-}
-
 #currentWord {
   height: 26px;
   margin: 6px 0 3px;
