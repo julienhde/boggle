@@ -7,11 +7,14 @@ import {
 // Constantes
 // ---------------------------------------------------------------------------
 
-// Modes de jeu : durées en secondes. En "attack" chaque mot validé rend
-// gainPerLetter seconde(s) par lettre ; en "libre" le chrono monte sans fin.
+// Modes de jeu : durées en secondes, et seuil (lowAt) sous lequel le chrono
+// passe en rouge. En "attack" chaque mot validé rend gainPerLetter seconde(s)
+// par lettre ; en "libre" le chrono monte sans fin (pas de lowAt).
 const GAME_MODES = {
-  classique: { duration: 180 },
-  attack: { duration: 60, gainPerLetter: 1 },
+  classique: { duration: 180, lowAt: 30 },
+  eclair: { duration: 90, lowAt: 15 },
+  flash: { duration: 45, lowAt: 10 },
+  attack: { duration: 60, gainPerLetter: 1, lowAt: 10 },
   libre: {}
 };
 
@@ -323,8 +326,7 @@ function tick() {
   timeLeft--;
   timerEl.textContent = formatTime(timeLeft);
   // en attack le temps peut remonter au-dessus du seuil, d'où le toggle
-  const lowAt = gameMode === 'attack' ? 10 : 30;
-  timerEl.classList.toggle('low', timeLeft <= lowAt);
+  timerEl.classList.toggle('low', timeLeft <= GAME_MODES[gameMode].lowAt);
   if (timeLeft <= 0) endGame();
 }
 
