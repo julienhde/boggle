@@ -51,7 +51,8 @@ function renderResults() {
   resMaxScoresEl.textContent = 'Score max — simple : '
     + scoreForWords(solvedWords, 'simple') + ' pts · bonus : '
     + scoreForWords(solvedWords, 'bonus') + ' pts · tournoi : '
-    + scoreForWords(solvedWords, 'tournoi') + ' pts';
+    + scoreForWords(solvedWords, 'tournoi') + ' pts · scrabble : '
+    + scoreForWords(solvedWords, 'scrabble') + ' pts';
 
   resultsEl.hidden = false;
   toggleWordsBtn.hidden = n === 0;

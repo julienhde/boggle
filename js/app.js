@@ -1,13 +1,19 @@
 import {
   buildGridLetters, parseSeed, areAdjacent,
-  loadDictionary, solveGrid, tournoiPoints, scoreForWords
+  loadDictionary, solveGrid, tournoiPoints, scrabbleWordPoints, scoreForWords
 } from './core.js';
 
 // ---------------------------------------------------------------------------
 // Constantes
 // ---------------------------------------------------------------------------
 
-const GAME_DURATION = 180; // secondes
+// Modes de jeu : durées en secondes. En "attack" chaque mot validé rend
+// gainPerLetter seconde(s) par lettre ; en "libre" le chrono monte sans fin.
+const GAME_MODES = {
+  classique: { duration: 180 },
+  attack: { duration: 60, gainPerLetter: 1 },
+  libre: {}
+};
 
 // ---------------------------------------------------------------------------
 // Éléments du DOM
@@ -20,6 +26,7 @@ const currentWordEl = document.getElementById('currentWord');
 const feedbackEl = document.getElementById('feedback');
 const wordListEl = document.getElementById('wordList');
 const seedInput = document.getElementById('seedInput');
+const gameModeSelect = document.getElementById('gameMode');
 const scoreModeSelect = document.getElementById('scoreMode');
 const startBtn = document.getElementById('startBtn');
 const endBanner = document.getElementById('endBanner');
@@ -34,7 +41,9 @@ let currentSeed = null;
 let path = [];          // indices des cases sélectionnées
 let words = [];         // liste de mots trouvés (strings)
 let score = 0;          // recalculé à chaque changement via recalcScore()
-let timeLeft = GAME_DURATION;
+let gameMode = 'classique'; // figé au startGame() : changer le select ne touche pas la partie en cours
+let timeLeft = GAME_MODES.classique.duration;
+let elapsed = 0;        // temps écoulé (mode libre)
 let timerId = null;
 let playing = false;
 let locked = false;     // true pendant le flash vert/rouge post-validation
@@ -90,7 +99,9 @@ function renderGrid() {
 
 // Points d'un mot seul, hors bonus globaux (utilisé pour l'affichage sur le chip)
 function wordBasePoints(word) {
-  if (scoreModeSelect.value === 'tournoi') return tournoiPoints(word.length);
+  const mode = scoreModeSelect.value;
+  if (mode === 'tournoi') return tournoiPoints(word.length);
+  if (mode === 'scrabble') return scrabbleWordPoints(word);
   return word.length; // simple et bonus partagent la même base : 1 pt/lettre
 }
 
@@ -206,7 +217,16 @@ function validateWord() {
     words.push(w);
     renderWordList();
     const pts = wordBasePoints(w);
-    flashFeedback(`+${pts} pt${pts > 1 ? 's' : ''}`, true);
+    let msg = `+${pts} pt${pts > 1 ? 's' : ''}`;
+    if (gameMode === 'attack') {
+      // le mot validé rend du temps : +1 s par lettre
+      const gain = w.length * GAME_MODES.attack.gainPerLetter;
+      timeLeft += gain;
+      timerEl.textContent = formatTime(timeLeft);
+      timerEl.classList.toggle('low', timeLeft <= 10);
+      msg += ` · +${gain}s`;
+    }
+    flashFeedback(msg, true);
   } else {
     flashFeedback('Mot non reconnu', false);
   }
@@ -281,20 +301,30 @@ function startGame() {
   renderWordList();
   endBanner.style.display = 'none';
   clearPath();
-  timeLeft = GAME_DURATION;
-  timerEl.textContent = formatTime(timeLeft);
+  gameMode = gameModeSelect.value;
+  timeLeft = GAME_MODES[gameMode].duration ?? 0;
+  elapsed = 0;
+  timerEl.textContent = formatTime(gameMode === 'libre' ? 0 : timeLeft);
   timerEl.classList.remove('low');
   playing = true;
   gridEl.classList.remove('disabled', 'preview');
-  startBtn.textContent = 'Recommencer';
+  startBtn.textContent = gameMode === 'libre' ? 'Terminer' : 'Recommencer';
   if (timerId) clearInterval(timerId);
   timerId = setInterval(tick, 1000);
 }
 
 function tick() {
+  if (gameMode === 'libre') {
+    // pas de fin automatique : simple temps écoulé, à titre indicatif
+    elapsed++;
+    timerEl.textContent = formatTime(elapsed);
+    return;
+  }
   timeLeft--;
   timerEl.textContent = formatTime(timeLeft);
-  if (timeLeft <= 30) timerEl.classList.add('low');
+  // en attack le temps peut remonter au-dessus du seuil, d'où le toggle
+  const lowAt = gameMode === 'attack' ? 10 : 30;
+  timerEl.classList.toggle('low', timeLeft <= lowAt);
   if (timeLeft <= 0) endGame();
 }
 
@@ -303,6 +333,7 @@ function endGame() {
   timerId = null;
   playing = false;
   gridEl.classList.add('disabled');
+  startBtn.textContent = 'Recommencer';
   clearPath();
   showEndBanner();
 }
@@ -314,12 +345,19 @@ function stopCurrentGame() {
   path = [];
   words = [];
   renderWordList();
-  timeLeft = GAME_DURATION;
-  timerEl.textContent = formatTime(timeLeft);
-  timerEl.classList.remove('low');
+  resetTimerDisplay();
   gridEl.classList.add('disabled', 'preview');
   endBanner.style.display = 'none';
   startBtn.textContent = 'Démarrer';
+}
+
+// Affiche la valeur de départ du chrono pour le mode sélectionné (hors partie)
+function resetTimerDisplay() {
+  const mode = gameModeSelect.value;
+  timeLeft = GAME_MODES[mode].duration ?? 0;
+  elapsed = 0;
+  timerEl.textContent = formatTime(mode === 'libre' ? 0 : timeLeft);
+  timerEl.classList.remove('low');
 }
 
 // ---------------------------------------------------------------------------
@@ -339,7 +377,10 @@ function showEndBanner() {
   endBanner.style.display = 'block';
   endBanner.textContent = '';
 
-  endBanner.append(`Temps écoulé — grille n°${currentSeed}`, document.createElement('br'), 'Score : ');
+  const title = gameMode === 'libre'
+    ? `Partie terminée — grille n°${currentSeed} (temps : ${formatTime(elapsed)})`
+    : `Temps écoulé — grille n°${currentSeed}`;
+  endBanner.append(title, document.createElement('br'), 'Score : ');
   const strong = document.createElement('strong');
   strong.textContent = `${score} pts`;
   endBanner.append(strong, ` (${words.length} mot${words.length > 1 ? 's' : ''})`);
@@ -356,6 +397,12 @@ function showEndBanner() {
     endBanner.append(
       document.createElement('br'),
       smallNote('Barème : 3-4 lettres = 1 pt · 5 = 2 pts · 6 = 3 pts · 7 = 5 pts · 8+ = 11 pts')
+    );
+  }
+  if (mode === 'scrabble') {
+    endBanner.append(
+      document.createElement('br'),
+      smallNote('Barème Scrabble : 1 pt (E,A,I,N,O,R,S,T,U,L) · 2 (D,G,M) · 3 (B,C,P) · 4 (F,H,V) · 8 (J,Q) · 10 (K,W,X,Y,Z)')
     );
   }
 
@@ -471,12 +518,24 @@ scoreModeSelect.addEventListener('change', () => {
   }
 });
 
+gameModeSelect.addEventListener('change', () => {
+  // hors partie : prévisualise le chrono de départ du mode choisi
+  if (!playing) resetTimerDisplay();
+});
+
 document.getElementById('validateBtn').addEventListener('click', validateWord);
 document.getElementById('clearBtn').addEventListener('click', () => {
   if (locked) return;
   clearPath();
 });
-startBtn.addEventListener('click', startGame);
+startBtn.addEventListener('click', () => {
+  // en mode libre, le bouton devient « Terminer » pendant la partie
+  if (playing && gameMode === 'libre') {
+    endGame();
+    return;
+  }
+  startGame();
+});
 
 // ---------------------------------------------------------------------------
 // Initialisation

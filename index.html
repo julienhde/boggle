@@ -24,11 +24,21 @@
 </div>
 
 <div class="mode-row">
+  <label for="gameMode">Mode :</label>
+  <select id="gameMode">
+    <option value="classique">Classique (3:00)</option>
+    <option value="attack">Time attack (60 s, +1 s/lettre)</option>
+    <option value="libre">Sans limite de temps</option>
+  </select>
+</div>
+
+<div class="mode-row">
   <label for="scoreMode">Points :</label>
   <select id="scoreMode">
     <option value="simple">Simple (1 pt/lettre)</option>
     <option value="bonus">Bonus (+ nb mots + mot le plus long)</option>
     <option value="tournoi">Tournoi (barème officiel)</option>
+    <option value="scrabble">Scrabble (points par lettre)</option>
   </select>
 </div>
 
