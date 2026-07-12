@@ -121,7 +121,9 @@ export function solveGrid(letters, dictionarySet, sortedWords) {
   const visited = new Array(letters.length).fill(false);
 
   function dfs(idx, word) {
-    word += letters[idx];
+    // toUpperCase : la tuile « Qu » est stockée avec un u minuscule, le
+    // dictionnaire est tout en majuscules
+    word += letters[idx].toUpperCase();
     if (!hasPrefix(sortedWords, word)) return;
     if (word.length >= 3 && dictionarySet.has(word)) found.add(word);
     visited[idx] = true;

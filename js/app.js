@@ -1,21 +1,24 @@
 import {
   buildGridLetters, parseSeed, areAdjacent,
-  loadDictionary, solveGrid, tournoiPoints, scrabbleWordPoints, scoreForWords
+  loadDictionary, solveGrid, scoreForWords
 } from './core.js';
 
 // ---------------------------------------------------------------------------
 // Constantes
 // ---------------------------------------------------------------------------
 
-// Modes de jeu : durées en secondes, et seuil (lowAt) sous lequel le chrono
-// passe en rouge. En "attack" chaque mot validé rend gainPerLetter seconde(s)
-// par lettre ; en "libre" le chrono monte sans fin (pas de lowAt).
+// Modes de jeu, pilotés par traits :
+// - duration : secondes au départ (absent => 0)
+// - lowAt : seuil sous lequel le chrono passe en rouge
+// - gainPerLetter : secondes rendues par lettre d'un mot validé (attack)
+// - countsUp : le chrono monte au lieu de descendre, jamais de fin auto
+// - endsManually : le bouton devient « Terminer » pendant la partie
 const GAME_MODES = {
   classique: { duration: 180, lowAt: 30 },
   eclair: { duration: 90, lowAt: 15 },
   flash: { duration: 45, lowAt: 10 },
   attack: { duration: 60, gainPerLetter: 1, lowAt: 10 },
-  libre: {}
+  libre: { countsUp: true, endsManually: true }
 };
 
 // ---------------------------------------------------------------------------
@@ -45,8 +48,7 @@ let path = [];          // indices des cases sélectionnées
 let words = [];         // liste de mots trouvés (strings)
 let score = 0;          // recalculé à chaque changement via recalcScore()
 let gameMode = 'classique'; // figé au startGame() : changer le select ne touche pas la partie en cours
-let timeLeft = GAME_MODES.classique.duration;
-let elapsed = 0;        // temps écoulé (mode libre)
+let timeLeft = GAME_MODES.classique.duration; // compte vers le haut depuis 0 si countsUp
 let timerId = null;
 let playing = false;
 let locked = false;     // true pendant le flash vert/rouge post-validation
@@ -103,9 +105,10 @@ function renderGrid() {
 // Points d'un mot seul, hors bonus globaux (utilisé pour l'affichage sur le chip)
 function wordBasePoints(word) {
   const mode = scoreModeSelect.value;
-  if (mode === 'tournoi') return tournoiPoints(word.length);
-  if (mode === 'scrabble') return scrabbleWordPoints(word);
-  return word.length; // simple et bonus partagent la même base : 1 pt/lettre
+  // bonus : les majorations (+1/mot, +plus long) sont globales, la base du
+  // chip reste 1 pt/lettre ; tous les autres barèmes délèguent au moteur
+  if (mode === 'bonus') return word.length;
+  return scoreForWords([word], mode);
 }
 
 function computeTotalScore() {
@@ -221,12 +224,12 @@ function validateWord() {
     renderWordList();
     const pts = wordBasePoints(w);
     let msg = `+${pts} pt${pts > 1 ? 's' : ''}`;
-    if (gameMode === 'attack') {
+    if (GAME_MODES[gameMode].gainPerLetter) {
       // le mot validé rend du temps : +1 s par lettre
-      const gain = w.length * GAME_MODES.attack.gainPerLetter;
+      const gain = w.length * GAME_MODES[gameMode].gainPerLetter;
       timeLeft += gain;
       timerEl.textContent = formatTime(timeLeft);
-      timerEl.classList.toggle('low', timeLeft <= 10);
+      timerEl.classList.toggle('low', timeLeft <= GAME_MODES[gameMode].lowAt);
       msg += ` · +${gain}s`;
     }
     flashFeedback(msg, true);
@@ -305,22 +308,19 @@ function startGame() {
   endBanner.style.display = 'none';
   clearPath();
   gameMode = gameModeSelect.value;
-  timeLeft = GAME_MODES[gameMode].duration ?? 0;
-  elapsed = 0;
-  timerEl.textContent = formatTime(gameMode === 'libre' ? 0 : timeLeft);
-  timerEl.classList.remove('low');
+  resetTimerDisplay();
   playing = true;
   gridEl.classList.remove('disabled', 'preview');
-  startBtn.textContent = gameMode === 'libre' ? 'Terminer' : 'Recommencer';
+  startBtn.textContent = GAME_MODES[gameMode].endsManually ? 'Terminer' : 'Recommencer';
   if (timerId) clearInterval(timerId);
   timerId = setInterval(tick, 1000);
 }
 
 function tick() {
-  if (gameMode === 'libre') {
+  if (GAME_MODES[gameMode].countsUp) {
     // pas de fin automatique : simple temps écoulé, à titre indicatif
-    elapsed++;
-    timerEl.textContent = formatTime(elapsed);
+    timeLeft++;
+    timerEl.textContent = formatTime(timeLeft);
     return;
   }
   timeLeft--;
@@ -336,6 +336,7 @@ function endGame() {
   playing = false;
   gridEl.classList.add('disabled');
   startBtn.textContent = 'Recommencer';
+  timerEl.classList.remove('low');
   clearPath();
   showEndBanner();
 }
@@ -353,12 +354,11 @@ function stopCurrentGame() {
   startBtn.textContent = 'Démarrer';
 }
 
-// Affiche la valeur de départ du chrono pour le mode sélectionné (hors partie)
+// Remet le chrono à sa valeur de départ pour le mode sélectionné
+// (0 pour un mode qui compte vers le haut)
 function resetTimerDisplay() {
-  const mode = gameModeSelect.value;
-  timeLeft = GAME_MODES[mode].duration ?? 0;
-  elapsed = 0;
-  timerEl.textContent = formatTime(mode === 'libre' ? 0 : timeLeft);
+  timeLeft = GAME_MODES[gameModeSelect.value].duration ?? 0;
+  timerEl.textContent = formatTime(timeLeft);
   timerEl.classList.remove('low');
 }
 
@@ -379,8 +379,8 @@ function showEndBanner() {
   endBanner.style.display = 'block';
   endBanner.textContent = '';
 
-  const title = gameMode === 'libre'
-    ? `Partie terminée — grille n°${currentSeed} (temps : ${formatTime(elapsed)})`
+  const title = GAME_MODES[gameMode].countsUp
+    ? `Partie terminée — grille n°${currentSeed} (temps : ${formatTime(timeLeft)})`
     : `Temps écoulé — grille n°${currentSeed}`;
   endBanner.append(title, document.createElement('br'), 'Score : ');
   const strong = document.createElement('strong');
@@ -521,8 +521,12 @@ scoreModeSelect.addEventListener('change', () => {
 });
 
 gameModeSelect.addEventListener('change', () => {
-  // hors partie : prévisualise le chrono de départ du mode choisi
-  if (!playing) resetTimerDisplay();
+  // hors partie : prévisualise le chrono du mode choisi et efface le bilan
+  // de la partie précédente (les deux ne peuvent pas cohabiter à l'écran)
+  if (!playing) {
+    resetTimerDisplay();
+    endBanner.style.display = 'none';
+  }
 });
 
 document.getElementById('validateBtn').addEventListener('click', validateWord);
@@ -531,8 +535,8 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   clearPath();
 });
 startBtn.addEventListener('click', () => {
-  // en mode libre, le bouton devient « Terminer » pendant la partie
-  if (playing && gameMode === 'libre') {
+  // pour un mode à fin manuelle, le bouton devient « Terminer » pendant la partie
+  if (playing && GAME_MODES[gameMode].endsManually) {
     endGame();
     return;
   }
@@ -543,10 +547,13 @@ startBtn.addEventListener('click', () => {
 // Initialisation
 // ---------------------------------------------------------------------------
 
-// Grille de démo au chargement
+// Grille de démo au chargement ; resetTimerDisplay synchronise le chrono
+// avec le mode restauré par le navigateur (Firefox conserve les <select>
+// au rechargement, le « 3:00 » du HTML serait alors faux)
 generateGrid(1);
 seedInput.value = 1;
 currentSeed = 1;
+resetTimerDisplay();
 
 initDictionary();
 
