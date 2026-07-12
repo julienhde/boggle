@@ -51,8 +51,16 @@ export function parseSeed(str) {
   return Math.abs(h);
 }
 
+// Grilles forcées : seed => 16 lettres fixes, en dehors du tirage normal des
+// dés. Vérifiées à la main (chemins de cases adjacentes valides).
+const FORCED_GRIDS = {
+  202607: ['P', 'R', 'O', 'V', 'E', 'C', 'N', 'I', 'S', 'M', 'I', 'T', 'M', 'A', 'R', 'I']
+  // contient "provinces" (0,1,2,3,7,6,5,4,8) et "maritimes" (12,13,14,15,11,10,9,4,8)
+};
+
 // Les 16 lettres de la grille pour un seed donné
 export function buildGridLetters(seed) {
+  if (FORCED_GRIDS[seed]) return FORCED_GRIDS[seed].slice();
   const rng = mulberry32(seed);
   const dice = seededShuffle(DICE, rng);
   return dice.map((die) => {
